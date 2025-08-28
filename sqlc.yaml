@@ -1,0 +1,13 @@
+
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "./internal/db/queries/queries.sql"
+    schema: "./migrations"
+    gen:
+      go:
+        package: "sqlc"
+        out: "./internal/db/sqlc"
+        sql_package: "database/sql"
+        emit_interface: true
+        emit_params_struct_pointers: true

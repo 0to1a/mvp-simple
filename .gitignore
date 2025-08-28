@@ -1,0 +1,8 @@
+
+.env
+internal/db/sqlc/*
+vendor/
+bin/
+dist/
+*.DS_Store
+.windsurf/
