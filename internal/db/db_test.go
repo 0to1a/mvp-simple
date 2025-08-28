@@ -5,6 +5,12 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
+)
+
+// Constants to eliminate duplicate literals
+const (
+	dbPingError = "db.Ping"
 )
 
 func TestOpenAndMigrate(t *testing.T) {
@@ -181,12 +187,5 @@ func TestConnectionStringParsing(t *testing.T) {
 
 // Helper function to check if error message contains expected substring
 func containsError(errMsg, expected string) bool {
-	return len(errMsg) >= len(expected) && func() bool {
-		for i := 0; i <= len(errMsg)-len(expected); i++ {
-			if errMsg[i:i+len(expected)] == expected {
-				return true
-			}
-		}
-		return false
-	}()
+	return strings.Contains(errMsg, expected)
 }
