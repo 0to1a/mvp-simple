@@ -13,6 +13,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// Error message constants
+const (
+	ErrInvalidBody           = "invalid body"
+	ErrFailedToLoadCompanies = "failed to load companies"
+)
+
 func AuthRequired(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
@@ -207,105 +213,120 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// Add refresh token endpoint
+// parseAndValidateRefreshToken validates and parses a refresh token, extracts user ID
+func (h *AuthHandler) parseAndValidateRefreshToken(refreshToken string) (jwt.MapClaims, int32, error) {
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(refreshToken, claims, func(t *jwt.Token) (interface{}, error) {
+		return []byte(h.App.Cfg.JWTSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return nil, 0, fmt.Errorf("invalid refresh token")
+	}
+
+	// Verify token type
+	if tokenType, ok := claims["type"].(string); !ok || tokenType != "refresh" {
+		return nil, 0, fmt.Errorf("invalid token type")
+	}
+
+	// Extract user ID
+	v, ok := claims["sub"]
+	if !ok {
+		return nil, 0, fmt.Errorf("missing user ID in token")
+	}
+	n, ok := v.(float64)
+	if !ok {
+		return nil, 0, fmt.Errorf("invalid user ID in token")
+	}
+
+	return claims, int32(n), nil
+}
+
+// resolveCompanyAccess determines company ID and admin status based on request and token
+func (h *AuthHandler) resolveCompanyAccess(c *gin.Context, requestedCompanyID *int32, claims jwt.MapClaims, userID int32) (int32, bool, error) {
+	if requestedCompanyID != nil {
+		// Validate user has access to requested company
+		companies, err := h.App.Queries.GetUserCompanies(c, userID)
+		if err != nil {
+			return 0, false, fmt.Errorf(ErrFailedToLoadCompanies)
+		}
+		for _, comp := range companies {
+			if comp.CompanyID == *requestedCompanyID {
+				return *requestedCompanyID, comp.IsAdmin.Bool, nil
+			}
+		}
+		return 0, false, fmt.Errorf("user not in specified company")
+	}
+
+	// Use company info from token
+	v, ok := claims["company_id"]
+	if !ok {
+		return 0, false, fmt.Errorf("missing company ID in token")
+	}
+	n, ok := v.(float64)
+	if !ok {
+		return 0, false, fmt.Errorf("invalid company ID in token")
+	}
+	companyID := int32(n)
+
+	// Try to get admin status from token, fallback to database
+	if v, ok := claims["is_admin"].(bool); ok {
+		return companyID, v, nil
+	}
+
+	// Lookup admin status from database
+	companies, err := h.App.Queries.GetUserCompanies(c, userID)
+	if err != nil {
+		return 0, false, fmt.Errorf(ErrFailedToLoadCompanies)
+	}
+	for _, comp := range companies {
+		if comp.CompanyID == companyID {
+			return companyID, comp.IsAdmin.Bool, nil
+		}
+	}
+
+	return companyID, false, nil
+}
+
+// RefreshToken handles refresh token requests and generates new access tokens
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`
 		CompanyID    *int32 `json:"company_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidBody})
 		return
 	}
 
-	// Parse and validate refresh token
-	claims := jwt.MapClaims{}
-	token, err := jwt.ParseWithClaims(req.RefreshToken, claims, func(t *jwt.Token) (interface{}, error) {
-		return []byte(h.App.Cfg.JWTSecret), nil
-	})
-	if err != nil || !token.Valid {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+	// Parse, validate token and extract user ID
+	claims, userID, err := h.parseAndValidateRefreshToken(req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Verify token type
-	if tokenType, ok := claims["type"].(string); !ok || tokenType != "refresh" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token type"})
+	// Resolve company access and admin status
+	companyID, isAdmin, err := h.resolveCompanyAccess(c, req.CompanyID, claims, userID)
+	if err != nil {
+		errorMsg := err.Error()
+		switch {
+		case errorMsg == "user not in specified company":
+			c.JSON(http.StatusForbidden, gin.H{"error": errorMsg})
+		case errorMsg == ErrFailedToLoadCompanies:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+		default:
+			c.JSON(http.StatusUnauthorized, gin.H{"error": errorMsg})
+		}
 		return
 	}
 
-	// Extract user ID (int32) from token
-	var userID int32
-	if v, ok := claims["sub"]; ok {
-		n, ok := v.(float64)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID in token"})
-			return
-		}
-		userID = int32(n)
-	} else {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing user ID in token"})
-		return
-	}
-
-	var companyID int32
-	var isAdmin bool
-	if req.CompanyID != nil {
-		companyID = *req.CompanyID
-		companies, err := h.App.Queries.GetUserCompanies(c, userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load companies"})
-			return
-		}
-		found := false
-		for _, comp := range companies {
-			if comp.CompanyID == companyID {
-				isAdmin = comp.IsAdmin.Bool
-				found = true
-				break
-			}
-		}
-		if !found {
-			c.JSON(http.StatusForbidden, gin.H{"error": "user not in specified company"})
-			return
-		}
-	} else {
-		if v, ok := claims["company_id"]; ok {
-			n, ok := v.(float64)
-			if !ok {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid company ID in token"})
-				return
-			}
-			companyID = int32(n)
-		} else {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing company ID in token"})
-			return
-		}
-		if v, ok := claims["is_admin"].(bool); ok {
-			isAdmin = v
-		} else {
-			companies, err := h.App.Queries.GetUserCompanies(c, userID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load companies"})
-				return
-			}
-			for _, comp := range companies {
-				if comp.CompanyID == companyID {
-					isAdmin = comp.IsAdmin.Bool
-					break
-				}
-			}
-		}
-	}
-
-	// Create new access token
+	// Generate new tokens
 	newAccessToken, err := h.createJWTToken(userID, companyID, isAdmin, "access")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create access token"})
 		return
 	}
 
-	// Optionally create new refresh token (rotate refresh tokens)
 	newRefreshToken, err := h.createJWTToken(userID, companyID, isAdmin, "refresh")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create refresh token"})
