@@ -102,7 +102,7 @@ func (e *EmailService) SendEmail(to, toName, subject, htmlBody string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		var emailResp EmailResponse
 		if err := json.NewDecoder(resp.Body).Decode(&emailResp); err == nil {
 			return fmt.Errorf("email API error (status %d): %s", resp.StatusCode, emailResp.Message)
