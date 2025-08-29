@@ -341,6 +341,13 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 // ListCompanies returns all companies for the authenticated user
 func (h *AuthHandler) ListCompanies(c *gin.Context) {
+	// CompanyResponse represents a clean company response structure
+	type CompanyResponse struct {
+		CompanyID   int32  `json:"CompanyID"`
+		CompanyName string `json:"CompanyName"`
+		IsAdmin     bool   `json:"IsAdmin"`
+	}
+
 	uid, ok := c.Get("user_id")
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -358,7 +365,18 @@ func (h *AuthHandler) ListCompanies(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load companies"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"companies": companies})
+
+	// Transform the database result to the expected JSON format
+	responseCompanies := make([]CompanyResponse, len(companies))
+	for i, company := range companies {
+		responseCompanies[i] = CompanyResponse{
+			CompanyID:   company.CompanyID,
+			CompanyName: company.CompanyName,
+			IsAdmin:     company.IsAdmin.Bool, // Extract the boolean value from sql.NullBool
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": responseCompanies})
 }
 
 // createOTPEmailHTML creates the HTML content for OTP email
