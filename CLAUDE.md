@@ -55,6 +55,7 @@ The build script supports skipping steps:
 The application uses PostgreSQL with automatic migrations via Goose. The `internal/db/db.go` package handles database initialization and runs all pending migrations on startup.
 
 ## Key Dependencies
+- **Go version**: 1.25.0
 - **Web framework**: Gin (github.com/gin-gonic/gin)
 - **Database**: pgx/v5 for PostgreSQL connectivity
 - **Authentication**: golang-jwt/jwt/v5

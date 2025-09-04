@@ -12,7 +12,7 @@ A minimal Go backend API with authentication and PostgreSQL integration.
 
 ## Tech Stack
 
-- Go 1.23
+- Go 1.25
 - Gin (web framework)
 - PostgreSQL 16
 - SQLC (type-safe SQL)
