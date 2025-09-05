@@ -1,7 +1,7 @@
 -- name: GetUserByEmail :one
 SELECT id, email, name, created_at
 FROM users
-WHERE email = $1;
+WHERE email = $1 AND deleted_at IS NULL;
 
 -- name: GetUserCompanies :many
 SELECT 
@@ -24,3 +24,8 @@ JOIN companies c ON c.id = uc.company_id
 WHERE uc.user_id = $1
 ORDER BY uc.created_at ASC
 LIMIT 1;
+
+-- name: SoftDeleteUser :exec
+UPDATE users
+SET deleted_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL;

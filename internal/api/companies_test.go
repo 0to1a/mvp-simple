@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+// CompanyResponse represents a clean company response structure
+type CompanyResponse struct {
+	CompanyID   int32  `json:"CompanyID"`
+	CompanyName string `json:"CompanyName"`
+	IsAdmin     bool   `json:"IsAdmin"`
+}
+
 func TestCompanyResponseJSONStructure(t *testing.T) {
 	// Test that the CompanyResponse struct produces the expected JSON
 	company := CompanyResponse{
