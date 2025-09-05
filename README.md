@@ -51,7 +51,9 @@ Server starts on `http://localhost:8080`
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `JWT_SECRET` | JWT secret key | No |
+| `JWT_SECRET` | JWT signing key | No |
+| `EMAIL_API_KEY` | Email service API key | No |
+| `EMAIL_FROM_ADDRESS` | Sender email address | No |
 
 ## Development
 
