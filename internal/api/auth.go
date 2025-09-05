@@ -36,6 +36,7 @@ func AuthRequired(jwtSecret string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
+		// Extract user_id
 		if v, ok := claims["sub"]; ok {
 			n, ok := v.(float64)
 			if !ok {
@@ -47,6 +48,33 @@ func AuthRequired(jwtSecret string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing sub in token"})
 			return
 		}
+
+		// Extract company_id
+		if v, ok := claims["company_id"]; ok {
+			n, ok := v.(float64)
+			if !ok {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid company_id in token"})
+				return
+			}
+			c.Set("company_id", int32(n))
+		} else {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing company_id in token"})
+			return
+		}
+
+		// Extract is_admin
+		if v, ok := claims["is_admin"]; ok {
+			isAdmin, ok := v.(bool)
+			if !ok {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid is_admin in token"})
+				return
+			}
+			c.Set("is_admin", isAdmin)
+		} else {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing is_admin in token"})
+			return
+		}
+
 		c.Next()
 	}
 }

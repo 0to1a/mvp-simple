@@ -1,10 +1,23 @@
 package api
 
 import (
+	"net/http"
 	core "project/internal"
 
 	"github.com/gin-gonic/gin"
 )
+
+// AdminRequired middleware checks if the user has admin privileges
+func AdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		isAdmin, exists := c.Get("is_admin")
+		if !exists || !isAdmin.(bool) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+			return
+		}
+		c.Next()
+	}
+}
 
 func Build(app *core.App) *gin.Engine {
 	r := gin.New()
@@ -22,6 +35,15 @@ func Build(app *core.App) *gin.Engine {
 	auth := r.Group("/v1", AuthRequired(app.Cfg.JWTSecret))
 	{
 		auth.GET("/companies", authH.ListCompanies)
+
+		// User management routes (admin only)
+		userH := NewUserHandler(app)
+		users := auth.Group("/users", AdminRequired())
+		{
+			users.GET("", userH.ListUsers)
+			users.POST("", userH.CreateUser)
+			users.DELETE("/:id", userH.DeleteUser)
+		}
 	}
 	return r
 }
