@@ -122,6 +122,12 @@ func (h *AuthHandler) LoginRequest(c *gin.Context) {
 		return
 	}
 
+	// Prevent test@test.com from being used in production
+	if req.Email == "test@test.com" && h.App.Cfg.Environment != "dev" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "test account not allowed in production"})
+		return
+	}
+
 	// Check if user exists in database
 	user, err := h.App.Queries.GetUserByEmail(c, req.Email)
 	if err != nil {
@@ -152,8 +158,14 @@ func (h *AuthHandler) LoginRequest(c *gin.Context) {
 		}
 	}
 
-	// Generate new OTP
-	otp := generateOTP()
+	// Generate new OTP (mock in development for test@test.com)
+	var otp string
+	if h.App.Cfg.Environment == "dev" && user.Email == "test@test.com" {
+		otp = "123456" // Mock OTP for development
+		fmt.Printf("DEV MODE: Using mock OTP '123456' for test@test.com\n")
+	} else {
+		otp = generateOTP()
+	}
 
 	// Store OTP in cache for 15 minutes
 	otpData := map[string]interface{}{
@@ -164,13 +176,17 @@ func (h *AuthHandler) LoginRequest(c *gin.Context) {
 	}
 	h.App.CacheSet(cacheKey, otpData, 15*time.Minute)
 
-	// Send OTP via email using the email service
-	err = h.App.EmailService.SendEmail(user.Email, user.Name, "Your OTP Code", h.createOTPEmailHTML(otp, user.Name))
-	if err != nil {
-		// Log error but don't fail the request - OTP is still cached
-		fmt.Printf("Failed to send OTP email to %s: %v\n", user.Email, err)
-		// Also log the OTP for development purposes when email fails
-		fmt.Printf("OTP for %s: %s\n", user.Email, otp)
+	// Send OTP via email using the email service (skip in dev for test@test.com)
+	if h.App.Cfg.Environment == "dev" && user.Email == "test@test.com" {
+		fmt.Printf("DEV MODE: Skipping email send for test@test.com, use OTP: %s\n", otp)
+	} else {
+		err = h.App.EmailService.SendEmail(user.Email, user.Name, "Your OTP Code", h.createOTPEmailHTML(otp, user.Name))
+		if err != nil {
+			// Log error but don't fail the request - OTP is still cached
+			fmt.Printf("Failed to send OTP email to %s: %v\n", user.Email, err)
+			// Also log the OTP for development purposes when email fails
+			fmt.Printf("OTP for %s: %s\n", user.Email, otp)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -186,6 +202,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+
+	// Prevent test@test.com from being used in production
+	if req.Email == "test@test.com" && h.App.Cfg.Environment != "dev" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "test account not allowed in production"})
 		return
 	}
 
